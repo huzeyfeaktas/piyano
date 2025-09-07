@@ -1,0 +1,86 @@
+import cv2
+import mediapipe as mp
+import pygame
+
+# Pygame ses ayarları
+pygame.mixer.init()
+
+# Mediapipe el tanıma modülü
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
+mp_drawing = mp.solutions.drawing_utils
+
+# Her bir parmak için ses dosyaları
+notes = {
+    "thumb": "C.wav",    # Baş parmak - C notası
+    "index": "D.wav",    # İşaret parmağı - D notası
+    "middle": "E.wav",   # Orta parmak - E notası
+    "ring": "F.wav",     # Yüzük parmak - F notası
+    "pinky": "G.wav"     # Serçe parmak - G notası
+}
+
+# Parmaklara atanmış ses kanalları
+channels = {
+    "thumb": None,
+    "index": None,
+    "middle": None,
+    "ring": None,
+    "pinky": None
+}
+
+# Kameradan görüntü alma
+cap = cv2.VideoCapture(0)
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    # Görüntüyü BGR'den RGB'ye çevir
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = hands.process(rgb_frame)
+
+    # El algılandıysa
+    if results.multi_hand_landmarks:
+        for hand_landmarks in results.multi_hand_landmarks:
+            mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            
+            # Parmak ucu ve ilk boğum koordinatlarını al (Thumb, Index, Middle, Ring, Pinky)
+            finger_tips = {
+                "thumb": hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP].y,
+                "index": hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].y,
+                "middle": hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP].y,
+                "ring": hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP].y,
+                "pinky": hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP].y
+            }
+            
+            finger_dips = {
+                "thumb": hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_IP].y,
+                "index": hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_PIP].y,
+                "middle": hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_PIP].y,
+                "ring": hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_PIP].y,
+                "pinky": hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_PIP].y
+            }
+
+            # Parmak aşağı mı, yukarı mı?
+            for finger_name, tip_y in finger_tips.items():
+                dip_y = finger_dips[finger_name]
+                
+                if tip_y > dip_y:  # Parmak aşağıda
+                    if channels[finger_name] is None:  # O nota şu an çalmıyorsa
+                        sound = pygame.mixer.Sound(notes[finger_name])
+                        channels[finger_name] = sound.play()  # Notayı çalmaya başla
+                else:  # Parmak yukarıda
+                    if channels[finger_name] is not None:  # O nota çalıyorsa
+                        channels[finger_name].stop()  # Notayı durdur
+                        channels[finger_name] = None  # Kanalı sıfırla
+
+    # Kameradan alınan görüntüyü göster
+    cv2.imshow("El Takibi ile Piyano", frame)
+
+    if cv2.waitKey(10) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
+pygame.mixer.quit()
